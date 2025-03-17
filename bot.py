@@ -112,7 +112,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         client = genai.Client(api_key=GEMINI_API_KEY)
         chat_contexts[chat_id] = client.chats.create(
             model=MODEL_NAME,
-            config=types.GenerateContentConfig(response_modalities=["Text", "Image"])
+            config=types.GenerateContentConfig(response_modalities=["Text", "Image"], temperature=1.0)
         )
 
 async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -123,7 +123,7 @@ async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
         client = genai.Client(api_key=GEMINI_API_KEY)
         chat_contexts[chat_id] = client.chats.create(
             model=MODEL_NAME,
-            config=types.GenerateContentConfig(response_modalities=["Text", "Image"])
+            config=types.GenerateContentConfig(response_modalities=["Text", "Image"], temperature=1.0)
         )
     await context.bot.send_message(chat_id=chat_id, text="Conversation history cleared and chat reset.")
 
@@ -137,7 +137,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             client = genai.Client(api_key=GEMINI_API_KEY)
             chat_contexts[chat_id] = client.chats.create(
                 model=MODEL_NAME,
-                config=types.GenerateContentConfig(response_modalities=["Text", "Image"])
+                config=types.GenerateContentConfig(response_modalities=["Text", "Image"], temperature=1.0)
             )
         response = chat_contexts[chat_id].send_message(user_message)
         for part in response.candidates[0].content.parts:
@@ -208,7 +208,7 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     client = genai.Client(api_key=GEMINI_API_KEY)
                     chat_contexts[chat_id] = client.chats.create(
                         model=MODEL_NAME,
-                        config=types.GenerateContentConfig(response_modalities=["Text", "Image"])
+                        config=types.GenerateContentConfig(response_modalities=["Text", "Image"], temperature=1.0)
                     )
                 response = chat_contexts[chat_id].send_message(message)
                 for part in response.candidates[0].content.parts:
@@ -249,7 +249,7 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
             client = genai.Client(api_key=GEMINI_API_KEY)
             chat_contexts[chat_id] = client.chats.create(
                 model=MODEL_NAME,
-                config=types.GenerateContentConfig(response_modalities=["Text", "Image"])
+                config=types.GenerateContentConfig(response_modalities=["Text", "Image"], temperature=1.0)
             )
         response = chat_contexts[chat_id].send_message(message)
         for part in response.candidates[0].content.parts:

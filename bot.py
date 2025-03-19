@@ -45,7 +45,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     await context.bot.send_message(
         chat_id=chat_id,
-        text="Hello! I'm your multimodal Gemini 2.0 bot. You can send me text or images, and I'll respond accordingly. Use /clear to reset our conversation."
+        text="Hello! I'm your multimodal Gemini 2.0 bot. You can send me text, images, or stickers, and I'll respond accordingly. Use /clear to reset our conversation."
     )
     if chat_id not in chat_contexts:
         configure_gemini()
@@ -254,6 +254,60 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.exception("Error processing image")
         await context.bot.send_message(chat_id=chat_id, text=f"Sorry, an error occurred: {type(e).__name__} - {e}")
 
+async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles incoming stickers and interacts with the Gemini API."""
+    chat_id = update.effective_chat.id
+    user_name = update.message.from_user.first_name
+    sticker = update.message.sticker
+
+    logger.info(f"Handling sticker message from chat_id: {chat_id}")
+
+    # Initialize chat_contexts if not already present
+    if chat_id not in chat_contexts:
+        logger.info(f"Initializing chat context for chat_id: {chat_id} in handle_sticker")
+        configure_gemini()
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        chat = client.chats.create(
+            model=MODEL_NAME,
+            config=types.GenerateContentConfig(response_modalities=["Text", "Image"], temperature=1.0)
+        )
+        chat.send_message(PREFIX_SYS)
+        chat_contexts[chat_id] = chat
+
+    try:
+        file = await context.bot.get_file(sticker.file_id)
+        image_bytes = await file.download_as_bytearray()
+        img = Image.open(io.BytesIO(image_bytes))
+        caption = f"{user_name}: Analyze this sticker." # Default caption for stickers
+        if update.effective_chat.type in ["group", "supergroup"]:
+            caption = f"{user_name}: Analyze this sticker." # Add username in groups
+        parts = [types.Part(text=caption)]
+        buf = io.BytesIO()
+        img.save(buf, format="PNG") # Stickers are usually PNG, saving as PNG
+        buf.seek(0)
+        parts.append(
+            types.Part(inline_data=types.Blob(mime_type="image/png", data=buf.getvalue())) # Setting mime_type to image/png
+        )
+        response = chat_contexts[chat_id].send_message(message=parts)
+        for part in response.candidates[0].content.parts:
+            if part.text is not None:
+                await send_safe_message(context, chat_id, part.text)
+            elif part.inline_data is not None:
+                response_image_stream = io.BytesIO(part.inline_data.data)
+                try:
+                    await context.bot.send_photo(chat_id=chat_id, photo=response_image_stream)
+                except Exception as e:
+                    logger.error("Error sending image", exc_info=e)
+                    await context.bot.send_message(chat_id=chat_id, text="Error sending the image.")
+            else:
+                logger.warning("Unexpected response part from Gemini.")
+                await context.bot.send_message(chat_id=chat_id, text="Unexpected response from Gemini.")
+
+    except Exception as e:
+        logger.exception("Error processing sticker")
+        await context.bot.send_message(chat_id=chat_id, text=f"Sorry, an error occurred processing the sticker: {type(e).__name__} - {e}")
+
+
 # --- Main Function ---
 def main():
     if not TELEGRAM_BOT_TOKEN:
@@ -263,6 +317,7 @@ def main():
     application.add_handler(CommandHandler("clear", clear))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     application.add_handler(MessageHandler(filters.PHOTO, handle_image))
+    application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker)) # Add sticker handler
     logger.info("Starting the bot...")
     application.run_polling()
 

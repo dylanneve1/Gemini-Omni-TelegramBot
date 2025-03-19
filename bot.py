@@ -2,11 +2,8 @@ import os
 import io
 import asyncio
 import logging
-import markdown2  # pip install markdown2
-from bs4 import BeautifulSoup, NavigableString  # pip install beautifulsoup4
 from PIL import Image
 from telegram import Update
-from telegram.constants import ParseMode
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from google import genai
 from google.genai import types
@@ -32,69 +29,6 @@ def configure_gemini():
     """Configures the Gemini API."""
     if not GEMINI_API_KEY:
         raise ValueError("GEMINI_API_KEY environment variable not set")
-
-# --- HTML Sanitization Helpers ---
-ALLOWED_TAGS = {"b", "strong", "i", "em", "u", "ins", "s", "strike", "del", "code", "pre", "a"}
-
-def sanitize_html_for_telegram(html_text: str) -> str:
-    """
-    Uses BeautifulSoup to remove any HTML tags that Telegram doesn't support.
-    Allowed tags are preserved (for <a> only the href attribute is kept).
-    For block-level tags (p, div, br, hr, ul, ol), newlines are inserted.
-    """
-    try:
-        soup = BeautifulSoup(html_text, "html.parser")
-        # Process every tag in the document
-        for tag in soup.find_all(True):
-            if tag.name not in ALLOWED_TAGS:
-                # For some block-level tags, insert newline markers before and after
-                if tag.name in ['p', 'div', 'br', 'hr', 'ul', 'ol']:
-                    tag.insert_before(NavigableString("\n"))
-                    tag.insert_after(NavigableString("\n"))
-                tag.unwrap()  # Remove the tag but keep its content
-            else:
-                # For allowed <a> tags, keep only the href attribute.
-                if tag.name == "a":
-                    allowed_attr = {}
-                    if tag.has_attr("href"):
-                        allowed_attr["href"] = tag["href"]
-                    tag.attrs = allowed_attr
-        # Use decode_contents() to return just the inner HTML without wrapping <html> or <body> tags.
-        safe_html = soup.decode_contents()
-        # Clean up excessive newlines
-        safe_html = "\n".join(line.strip() for line in safe_html.splitlines() if line.strip())
-        return safe_html
-    except Exception as e:
-        logger.error("Error during HTML sanitization", exc_info=e)
-        # In worst case, return plain text with no formatting.
-        return html_text
-
-def safe_markdown_to_html(md_text: str) -> str:
-    """
-    Converts Markdown to HTML and then sanitizes it so that Telegram's HTML parser accepts it.
-    If any error occurs during conversion, the original Markdown text is returned.
-    """
-    try:
-        html_text = markdown2.markdown(md_text)
-        safe_html = sanitize_html_for_telegram(html_text)
-        return safe_html
-    except Exception as e:
-        logger.error("Error converting Markdown to safe HTML", exc_info=e)
-        return md_text  # fallback to plain markdown text
-
-def send_safe_message(context, chat_id, text: str):
-    """
-    Attempts to send a message using HTML parse mode.
-    If an error occurs, falls back to plain text.
-    """
-    try:
-        safe_html = safe_markdown_to_html(text)
-        return context.bot.send_message(
-            chat_id=chat_id, text=safe_html, parse_mode=ParseMode.HTML
-        )
-    except Exception as e:
-        logger.error("Error sending HTML message, falling back to plain text", exc_info=e)
-        return context.bot.send_message(chat_id=chat_id, text=text)
 
 # --- Shared Context Management ---
 chat_contexts = {}  # Dictionary to store chat contexts by chat_id
@@ -126,6 +60,10 @@ async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
             config=types.GenerateContentConfig(response_modalities=["Text", "Image"], temperature=1.0)
         )
     await context.bot.send_message(chat_id=chat_id, text="Conversation history cleared and chat reset.")
+
+def send_safe_message(context, chat_id, text: str):
+    """Sends a plain text message."""
+    return context.bot.send_message(chat_id=chat_id, text=text)
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles incoming text messages and interacts with the Gemini API."""

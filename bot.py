@@ -139,7 +139,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 model=MODEL_NAME,
                 config=types.GenerateContentConfig(response_modalities=["Text", "Image"], temperature=1.0)
             )
-        response = chat_contexts[chat_id].send_message(user_message)
+        response = chat_contexts[chat_id].send_message(user_message) # This line is likely fine as user_message is text (PartUnion compatible)
         for part in response.candidates[0].content.parts:
             if part.text is not None:
                 await send_safe_message(context, chat_id, part.text)
@@ -162,6 +162,18 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     user_name = update.message.from_user.first_name
     media_group_id = update.message.media_group_id
+
+    logger.info(f"Handling image message from chat_id: {chat_id}") # Added logging
+
+    # Initialize chat_contexts if not already present - ADDED INITIALIZATION CHECK
+    if chat_id not in chat_contexts:
+        logger.info(f"Initializing chat context for chat_id: {chat_id} in handle_image") # Added logging
+        configure_gemini()
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        chat_contexts[chat_id] = client.chats.create(
+            model=MODEL_NAME,
+            config=types.GenerateContentConfig(response_modalities=["Text", "Image"], temperature=1.0)
+        )
 
     # If the message is part of a media group, accumulate images.
     if media_group_id:
@@ -202,15 +214,7 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             inline_data=types.Blob(mime_type="image/jpeg", data=buf.getvalue())
                         )
                     )
-                message = types.Content(parts=parts, role="user")
-                if chat_id not in chat_contexts:
-                    configure_gemini()
-                    client = genai.Client(api_key=GEMINI_API_KEY)
-                    chat_contexts[chat_id] = client.chats.create(
-                        model=MODEL_NAME,
-                        config=types.GenerateContentConfig(response_modalities=["Text", "Image"], temperature=1.0)
-                    )
-                response = chat_contexts[chat_id].send_message(message)
+                response = chat_contexts[chat_id].send_message(message=parts)
                 for part in response.candidates[0].content.parts:
                     if part.text is not None:
                         await send_safe_message(context, chat_id, part.text)
@@ -243,15 +247,7 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parts.append(
             types.Part(inline_data=types.Blob(mime_type="image/jpeg", data=buf.getvalue()))
         )
-        message = types.Content(parts=parts, role="user")
-        if chat_id not in chat_contexts:
-            configure_gemini()
-            client = genai.Client(api_key=GEMINI_API_KEY)
-            chat_contexts[chat_id] = client.chats.create(
-                model=MODEL_NAME,
-                config=types.GenerateContentConfig(response_modalities=["Text", "Image"], temperature=1.0)
-            )
-        response = chat_contexts[chat_id].send_message(message)
+        response = chat_contexts[chat_id].send_message(message=parts)
         for part in response.candidates[0].content.parts:
             if part.text is not None:
                 await send_safe_message(context, chat_id, part.text)
@@ -265,6 +261,9 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 logger.warning("Unexpected response part from Gemini.")
                 await context.bot.send_message(chat_id=chat_id, text="Unexpected response from Gemini.")
+    except KeyError as e: # Catch KeyError specifically for logging
+        logger.error(f"KeyError in handle_image for chat_id {chat_id}: {e}")
+        await context.bot.send_message(chat_id=chat_id, text=f"Sorry, an error occurred: KeyError - {e}. Please try /start to reset the bot.")
     except Exception as e:
         logger.exception("Error processing image")
         await context.bot.send_message(chat_id=chat_id, text=f"Sorry, an error occurred: {type(e).__name__} - {e}")

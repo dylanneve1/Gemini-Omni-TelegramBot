@@ -142,7 +142,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles incoming images (including media groups) and interacts with the Gemini API."""
     chat_id = update.effective_chat.id
-    user_name = update.message.from_user.first_name
     media_group_id = update.message.media_group_id
 
     logger.info(f"Handling image message from chat_id: {chat_id}") # Added logging
@@ -187,9 +186,7 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     file = await context.bot.get_file(photo.file_id)
                     image_bytes = await file.download_as_bytearray()
                     image_list.append(Image.open(io.BytesIO(image_bytes)))
-                caption = media_group["caption"] or "Please analyze these images."
-                if update.effective_chat.type in ["group", "supergroup"]:
-                    caption = f"{user_name}: {caption}"
+                caption = media_group["caption"] or "" # Empty caption if no user caption
                 parts = [types.Part(text=caption)]
                 for img in image_list:
                     buf = io.BytesIO()
@@ -223,9 +220,7 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
         file = await context.bot.get_file(photo.file_id)
         image_bytes = await file.download_as_bytearray()
         img = Image.open(io.BytesIO(image_bytes))
-        caption = update.message.caption or "Please analyze this image."
-        if update.effective_chat.type in ["group", "supergroup"]:
-            caption = f"{user_name}: {caption}"
+        caption = update.message.caption or "" # Empty caption if no user caption
         parts = [types.Part(text=caption)]
         buf = io.BytesIO()
         img.save(buf, format="JPEG")
@@ -257,7 +252,6 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles incoming stickers and interacts with the Gemini API."""
     chat_id = update.effective_chat.id
-    user_name = update.message.from_user.first_name
     sticker = update.message.sticker
 
     logger.info(f"Handling sticker message from chat_id: {chat_id}")
@@ -278,9 +272,7 @@ async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
         file = await context.bot.get_file(sticker.file_id)
         image_bytes = await file.download_as_bytearray()
         img = Image.open(io.BytesIO(image_bytes))
-        caption = f"{user_name}: Analyze this sticker." # Default caption for stickers
-        if update.effective_chat.type in ["group", "supergroup"]:
-            caption = f"{user_name}: Analyze this sticker." # Add username in groups
+        caption = update.message.caption or "" # Empty caption if no user caption
         parts = [types.Part(text=caption)]
         buf = io.BytesIO()
         img.save(buf, format="PNG") # Stickers are usually PNG, saving as PNG

@@ -45,7 +45,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     await context.bot.send_message(
         chat_id=chat_id,
-        text="Hello! I'm your multimodal Gemini 2.0 bot. You can send me text, images, or stickers, and I'll respond accordingly. Use /clear to reset our conversation."
+        text="Hello! I'm Omni. You can send me text, images, stickers, audio messages, or audio files, and I'll respond accordingly. Use /clear to reset our conversation."
     )
     if chat_id not in chat_contexts:
         configure_gemini()
@@ -53,7 +53,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Create chat with system message prefix
         chat = client.chats.create(
             model=MODEL_NAME,
-            config=types.GenerateContentConfig(response_modalities=["Text", "Image"], temperature=1.0)
+            config=types.GenerateContentConfig(response_modalities=["Text", "Image"], temperature=1.0) # Removed "Audio" from response_modalities
         )
         # Send system message as first message
         chat.send_message(PREFIX_SYS)
@@ -68,7 +68,7 @@ async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Create new chat with system message prefix
         chat = client.chats.create(
             model=MODEL_NAME,
-            config=types.GenerateContentConfig(response_modalities=["Text", "Image"], temperature=1.0)
+            config=types.GenerateContentConfig(response_modalities=["Text", "Image"], temperature=1.0) # Removed "Audio" from response_modalities
         )
         # Send system message as first message
         chat.send_message(PREFIX_SYS)
@@ -116,7 +116,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Create chat with system message prefix
             chat = client.chats.create(
                 model=MODEL_NAME,
-                config=types.GenerateContentConfig(response_modalities=["Text", "Image"], temperature=1.0)
+                config=types.GenerateContentConfig(response_modalities=["Text", "Image"], temperature=1.0) # Removed "Audio" from response_modalities
             )
             # Send system message as first message
             chat.send_message(PREFIX_SYS)
@@ -154,7 +154,7 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Create chat with system message prefix
         chat = client.chats.create(
             model=MODEL_NAME,
-            config=types.GenerateContentConfig(response_modalities=["Text", "Image"], temperature=1.0)
+            config=types.GenerateContentConfig(response_modalities=["Text", "Image"], temperature=1.0) # Removed "Audio" from response_modalities
         )
         # Send system message as first message
         chat.send_message(PREFIX_SYS)
@@ -263,7 +263,7 @@ async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
         client = genai.Client(api_key=GEMINI_API_KEY)
         chat = client.chats.create(
             model=MODEL_NAME,
-            config=types.GenerateContentConfig(response_modalities=["Text", "Image"], temperature=1.0)
+            config=types.GenerateContentConfig(response_modalities=["Text", "Image"], temperature=1.0) # Removed "Audio" from response_modalities
         )
         chat.send_message(PREFIX_SYS)
         chat_contexts[chat_id] = chat
@@ -299,6 +299,104 @@ async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.exception("Error processing sticker")
         await context.bot.send_message(chat_id=chat_id, text=f"Sorry, an error occurred processing the sticker: {type(e).__name__} - {e}")
 
+async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles incoming audio files (music) and interacts with the Gemini API."""
+    chat_id = update.effective_chat.id
+    audio = update.message.audio
+
+    logger.info(f"Handling audio file from chat_id: {chat_id}")
+
+    if chat_id not in chat_contexts:
+        logger.info(f"Initializing chat context for chat_id: {chat_id} in handle_audio")
+        configure_gemini()
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        chat = client.chats.create(
+            model=MODEL_NAME,
+            config=types.GenerateContentConfig(response_modalities=["Text", "Image"], temperature=1.0) # Removed "Audio" from response_modalities
+        )
+        chat.send_message(PREFIX_SYS)
+        chat_contexts[chat_id] = chat
+
+    try:
+        file = await context.bot.get_file(audio.file_id)
+        audio_bytes = await file.download_as_bytearray()
+        audio_stream = io.BytesIO(audio_bytes)
+        caption = update.message.caption or ""
+        mime_type = audio.mime_type if audio.mime_type else "audio/mpeg" # Default to mpeg if not provided
+
+        parts = [types.Part(text=caption)]
+        parts.append(
+            types.Part(inline_data=types.Blob(mime_type=mime_type, data=audio_stream.getvalue()))
+        )
+
+        response = chat_contexts[chat_id].send_message(message=parts)
+        for part in response.candidates[0].content.parts:
+            if part.text is not None:
+                await send_safe_message(context, chat_id, part.text)
+            elif part.inline_data is not None:
+                response_image_stream = io.BytesIO(part.inline_data.data)
+                try:
+                    await context.bot.send_photo(chat_id=chat_id, photo=response_image_stream)
+                except Exception as e:
+                    logger.error("Error sending image", exc_info=e)
+                    await context.bot.send_message(chat_id=chat_id, text="Error sending the image response.")
+            else:
+                logger.warning("Unexpected response part from Gemini.")
+                await context.bot.send_message(chat_id=chat_id, text="Unexpected response from Gemini.")
+
+    except Exception as e:
+        logger.exception("Error processing audio file")
+        await context.bot.send_message(chat_id=chat_id, text=f"Sorry, an error occurred processing the audio file: {type(e).__name__} - {e}")
+
+async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles incoming voice messages and interacts with the Gemini API."""
+    chat_id = update.effective_chat.id
+    voice = update.message.voice
+
+    logger.info(f"Handling voice message from chat_id: {chat_id}")
+
+    if chat_id not in chat_contexts:
+        logger.info(f"Initializing chat context for chat_id: {chat_id} in handle_voice")
+        configure_gemini()
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        chat = client.chats.create(
+            model=MODEL_NAME,
+            config=types.GenerateContentConfig(response_modalities=["Text", "Image"], temperature=1.0) # Removed "Audio" from response_modalities
+        )
+        chat.send_message(PREFIX_SYS)
+        chat_contexts[chat_id] = chat
+
+    try:
+        file = await context.bot.get_file(voice.file_id)
+        voice_bytes = await file.download_as_bytearray()
+        voice_stream = io.BytesIO(voice_bytes)
+        caption = update.message.caption or ""
+        mime_type = voice.mime_type if voice.mime_type else "audio/ogg" # Default to ogg for voice messages
+
+        parts = [types.Part(text=caption)]
+        parts.append(
+            types.Part(inline_data=types.Blob(mime_type=mime_type, data=voice_stream.getvalue()))
+        )
+
+        response = chat_contexts[chat_id].send_message(message=parts)
+        for part in response.candidates[0].content.parts:
+            if part.text is not None:
+                await send_safe_message(context, chat_id, part.text)
+            elif part.inline_data is not None:
+                response_image_stream = io.BytesIO(part.inline_data.data)
+                try:
+                    await context.bot.send_photo(chat_id=chat_id, photo=response_image_stream)
+                except Exception as e:
+                    logger.error("Error sending image", exc_info=e)
+                    await context.bot.send_message(chat_id=chat_id, text="Error sending the image response.")
+            else:
+                logger.warning("Unexpected response part from Gemini.")
+                await context.bot.send_message(chat_id=chat_id, text="Unexpected response from Gemini.")
+
+    except Exception as e:
+        logger.exception("Error processing voice message")
+        await context.bot.send_message(chat_id=chat_id, text=f"Sorry, an error occurred processing the voice message: {type(e).__name__} - {e}")
+
 
 # --- Main Function ---
 def main():
@@ -310,6 +408,8 @@ def main():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     application.add_handler(MessageHandler(filters.PHOTO, handle_image))
     application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker)) # Add sticker handler
+    application.add_handler(MessageHandler(filters.AUDIO, handle_audio)) # Add audio file handler
+    application.add_handler(MessageHandler(filters.VOICE, handle_voice)) # Add voice message handler
     logger.info("Starting the bot...")
     application.run_polling()
 

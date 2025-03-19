@@ -8,6 +8,10 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, fil
 from google import genai
 from google.genai import types
 
+# --- telegramify-markdown imports ---
+from telegramify_markdown import telegramify, ContentTypes
+from telegramify_markdown.type import Text, File, Photo
+
 # --- Configuration ---
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
@@ -61,9 +65,35 @@ async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     await context.bot.send_message(chat_id=chat_id, text="Conversation history cleared and chat reset.")
 
-def send_safe_message(context, chat_id, text: str):
-    """Sends a plain text message."""
-    return context.bot.send_message(chat_id=chat_id, text=text)
+# --- Modified send_safe_message to use telegramify-markdown ---
+async def send_safe_message(context: ContextTypes.DEFAULT_TYPE, chat_id: int, text: str):
+    """Sends a formatted message using telegramify-markdown."""
+    formatted_content_list = await telegramify(text)
+    for formatted_content in formatted_content_list:
+        if formatted_content.content_type == ContentTypes.TEXT:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=formatted_content.content,
+                parse_mode="MarkdownV2"  # Important: Enable MarkdownV2 parsing
+            )
+        elif formatted_content.content_type == ContentTypes.FILE:
+            if isinstance(formatted_content, File):
+                await context.bot.send_document(
+                    chat_id=chat_id,
+                    document=io.BytesIO(formatted_content.file_data),
+                    filename=formatted_content.file_name,
+                    caption=formatted_content.caption,
+                    parse_mode="MarkdownV2"
+                )
+        elif formatted_content.content_type == ContentTypes.PHOTO:
+            if isinstance(formatted_content, Photo):
+                await context.bot.send_photo(
+                    chat_id=chat_id,
+                    photo=io.BytesIO(formatted_content.file_data),
+                    filename=formatted_content.file_name,
+                    caption=formatted_content.caption,
+                    parse_mode="MarkdownV2"
+                )
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles incoming text messages and interacts with the Gemini API."""
@@ -80,7 +110,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         response = chat_contexts[chat_id].send_message(user_message) # This line is likely fine as user_message is text (PartUnion compatible)
         for part in response.candidates[0].content.parts:
             if part.text is not None:
-                await send_safe_message(context, chat_id, part.text)
+                await send_safe_message(context, chat_id, part.text) # Use the modified send_safe_message
             elif part.inline_data is not None:
                 image_stream = io.BytesIO(part.inline_data.data)
                 try:
@@ -155,7 +185,7 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 response = chat_contexts[chat_id].send_message(message=parts)
                 for part in response.candidates[0].content.parts:
                     if part.text is not None:
-                        await send_safe_message(context, chat_id, part.text)
+                        await send_safe_message(context, chat_id, part.text) # Use the modified send_safe_message
                     elif part.inline_data is not None:
                         response_image_stream = io.BytesIO(part.inline_data.data)
                         try:
@@ -188,7 +218,7 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
         response = chat_contexts[chat_id].send_message(message=parts)
         for part in response.candidates[0].content.parts:
             if part.text is not None:
-                await send_safe_message(context, chat_id, part.text)
+                await send_safe_message(context, chat_id, part.text) # Use the modified send_safe_message
             elif part.inline_data is not None:
                 response_image_stream = io.BytesIO(part.inline_data.data)
                 try:

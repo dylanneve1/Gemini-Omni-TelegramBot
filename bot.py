@@ -56,7 +56,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             config=types.GenerateContentConfig(response_modalities=["Text", "Image"], temperature=1.0) # Removed "Audio" from response_modalities
         )
         # Send system message as first message
-        chat.send_message(PREFIX_SYS)
+        await retry_gemini_call(chat.send_message, PREFIX_SYS, retries=3, delay=1)
         chat_contexts[chat_id] = chat
 
 async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -71,9 +71,24 @@ async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
             config=types.GenerateContentConfig(response_modalities=["Text", "Image"], temperature=1.0) # Removed "Audio" from response_modalities
         )
         # Send system message as first message
-        chat.send_message(PREFIX_SYS)
+        await retry_gemini_call(chat.send_message, PREFIX_SYS, retries=3, delay=1)
         chat_contexts[chat_id] = chat
     await context.bot.send_message(chat_id=chat_id, text="Conversation history cleared and chat reset.")
+
+async def retry_gemini_call(func, *args, retries=3, delay=1, **kwargs):
+    """Retries a Gemini API call with exponential backoff."""
+    attempts = 0
+    while attempts <= retries:
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            attempts += 1
+            if attempts > retries:
+                logger.error(f"Gemini API call failed after {retries} retries: {e}")
+                raise APIError(f"Gemini API call failed after multiple retries: {e}")
+            else:
+                logger.warning(f"Gemini API call failed (attempt {attempts}/{retries}): {e}. Retrying in {delay} seconds...")
+                await asyncio.sleep(delay)
 
 # --- Modified send_safe_message to use telegramify-markdown ---
 async def send_safe_message(context: ContextTypes.DEFAULT_TYPE, chat_id: int, text: str):
@@ -119,9 +134,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 config=types.GenerateContentConfig(response_modalities=["Text", "Image"], temperature=1.0) # Removed "Audio" from response_modalities
             )
             # Send system message as first message
-            chat.send_message(PREFIX_SYS)
+            await retry_gemini_call(chat.send_message, PREFIX_SYS, retries=3, delay=1)
             chat_contexts[chat_id] = chat
-        response = chat_contexts[chat_id].send_message(user_message) # This line is likely fine as user_message is text (PartUnion compatible)
+
+        response = await retry_gemini_call(chat_contexts[chat_id].send_message, user_message, retries=3, delay=1)
         for part in response.candidates[0].content.parts:
             if part.text is not None:
                 await send_safe_message(context, chat_id, part.text) # Use the modified send_safe_message
@@ -135,9 +151,11 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 logger.warning("Unexpected response part from Gemini.")
                 await context.bot.send_message(chat_id=chat_id, text="Unexpected response from Gemini.")
+    except APIError as e:
+        await context.bot.send_message(chat_id=chat_id, text=f"Sorry, Gemini API failed after multiple retries: {e}")
     except Exception as e:
         logger.exception("Error processing Gemini response")
-        await context.bot.send_message(chat_id=chat_id, text=f"Sorry, an error occurred: {type(e).__name__} - {e}")
+        await context.bot.send_message(chat_id=chat_id, text=f"Sorry, an unexpected error occurred: {type(e).__name__} - {e}")
 
 async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles incoming images (including media groups) and interacts with the Gemini API."""
@@ -157,7 +175,7 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
             config=types.GenerateContentConfig(response_modalities=["Text", "Image"], temperature=1.0) # Removed "Audio" from response_modalities
         )
         # Send system message as first message
-        chat.send_message(PREFIX_SYS)
+        await retry_gemini_call(chat.send_message, PREFIX_SYS, retries=3, delay=1)
         chat_contexts[chat_id] = chat
 
     # If the message is part of a media group, accumulate images.
@@ -165,7 +183,7 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if "media_groups" not in context.chat_data:
             context.chat_data["media_groups"] = {}
         if media_group_id not in context.chat_data["media_groups"]:
-            context.chat_data["media_groups"][media_group_id] = {"photos": [], "caption": update.message.caption or ""}
+            context.chat_data["media_groups"][media_group_id] = {"photos":, "caption": update.message.caption or ""}
         context.chat_data["media_groups"][media_group_id]["photos"].append(update.message.photo)
         if update.message.caption:
             context.chat_data["media_groups"][media_group_id]["caption"] = update.message.caption
@@ -181,7 +199,7 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     key = photo.file_id[:-7]
                     if key not in unique_images or photo.file_size > unique_images[key].file_size:
                         unique_images[key] = photo
-                image_list = []
+                image_list =
                 for photo in unique_images.values():
                     file = await context.bot.get_file(photo.file_id)
                     image_bytes = await file.download_as_bytearray()
@@ -197,20 +215,26 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             inline_data=types.Blob(mime_type="image/jpeg", data=buf.getvalue())
                         )
                     )
-                response = chat_contexts[chat_id].send_message(message=parts)
-                for part in response.candidates[0].content.parts:
-                    if part.text is not None:
-                        await send_safe_message(context, chat_id, part.text) # Use the modified send_safe_message
-                    elif part.inline_data is not None:
-                        response_image_stream = io.BytesIO(part.inline_data.data)
-                        try:
-                            await context.bot.send_photo(chat_id=chat_id, photo=response_image_stream)
-                        except Exception as e:
-                            logger.error("Error sending image", exc_info=e)
-                            await context.bot.send_message(chat_id=chat_id, text="Error sending the image.")
-                    else:
-                        logger.warning("Unexpected response part from Gemini.")
-                        await context.bot.send_message(chat_id=chat_id, text="Unexpected response from Gemini.")
+                try:
+                    response = await retry_gemini_call(chat_contexts[chat_id].send_message, message=parts, retries=3, delay=1)
+                    for part in response.candidates[0].content.parts:
+                        if part.text is not None:
+                            await send_safe_message(context, chat_id, part.text) # Use the modified send_safe_message
+                        elif part.inline_data is not None:
+                            response_image_stream = io.BytesIO(part.inline_data.data)
+                            try:
+                                await context.bot.send_photo(chat_id=chat_id, photo=response_image_stream)
+                            except Exception as e:
+                                logger.error("Error sending image", exc_info=e)
+                                await context.bot.send_message(chat_id=chat_id, text="Error sending the image.")
+                        else:
+                            logger.warning("Unexpected response part from Gemini.")
+                            await context.bot.send_message(chat_id=chat_id, text="Unexpected response from Gemini.")
+                except APIError as e:
+                    await context.bot.send_message(chat_id=chat_id, text=f"Sorry, Gemini API failed after multiple retries: {e}")
+                except Exception as e:
+                    logger.exception("Error processing media group response")
+                    await context.bot.send_message(chat_id=chat_id, text=f"Sorry, an unexpected error occurred: {type(e).__name__} - {e}")
             context.chat_data["media_groups"][media_group_id]["job"] = asyncio.create_task(process_media_group(media_group_id))
         return
 
@@ -228,7 +252,7 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parts.append(
             types.Part(inline_data=types.Blob(mime_type="image/jpeg", data=buf.getvalue()))
         )
-        response = chat_contexts[chat_id].send_message(message=parts)
+        response = await retry_gemini_call(chat_contexts[chat_id].send_message, message=parts, retries=3, delay=1)
         for part in response.candidates[0].content.parts:
             if part.text is not None:
                 await send_safe_message(context, chat_id, part.text) # Use the modified send_safe_message
@@ -242,12 +266,14 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 logger.warning("Unexpected response part from Gemini.")
                 await context.bot.send_message(chat_id=chat_id, text="Unexpected response from Gemini.")
+    except APIError as e:
+        await context.bot.send_message(chat_id=chat_id, text=f"Sorry, Gemini API failed after multiple retries: {e}")
     except KeyError as e: # Catch KeyError specifically for logging
         logger.error(f"KeyError in handle_image for chat_id {chat_id}: {e}")
         await context.bot.send_message(chat_id=chat_id, text=f"Sorry, an error occurred: KeyError - {e}. Please try /start to reset the bot.")
     except Exception as e:
         logger.exception("Error processing image")
-        await context.bot.send_message(chat_id=chat_id, text=f"Sorry, an error occurred: {type(e).__name__} - {e}")
+        await context.bot.send_message(chat_id=chat_id, text=f"Sorry, an unexpected error occurred: {type(e).__name__} - {e}")
 
 async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles incoming stickers and interacts with the Gemini API."""
@@ -265,7 +291,7 @@ async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
             model=MODEL_NAME,
             config=types.GenerateContentConfig(response_modalities=["Text", "Image"], temperature=1.0) # Removed "Audio" from response_modalities
         )
-        chat.send_message(PREFIX_SYS)
+        await retry_gemini_call(chat.send_message, PREFIX_SYS, retries=3, delay=1)
         chat_contexts[chat_id] = chat
 
     try:
@@ -280,7 +306,7 @@ async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parts.append(
             types.Part(inline_data=types.Blob(mime_type="image/png", data=buf.getvalue())) # Setting mime_type to image/png
         )
-        response = chat_contexts[chat_id].send_message(message=parts)
+        response = await retry_gemini_call(chat_contexts[chat_id].send_message, message=parts, retries=3, delay=1)
         for part in response.candidates[0].content.parts:
             if part.text is not None:
                 await send_safe_message(context, chat_id, part.text)
@@ -294,10 +320,11 @@ async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 logger.warning("Unexpected response part from Gemini.")
                 await context.bot.send_message(chat_id=chat_id, text="Unexpected response from Gemini.")
-
+    except APIError as e:
+        await context.bot.send_message(chat_id=chat_id, text=f"Sorry, Gemini API failed after multiple retries: {e}")
     except Exception as e:
         logger.exception("Error processing sticker")
-        await context.bot.send_message(chat_id=chat_id, text=f"Sorry, an error occurred processing the sticker: {type(e).__name__} - {e}")
+        await context.bot.send_message(chat_id=chat_id, text=f"Sorry, an unexpected error occurred processing the sticker: {type(e).__name__} - {e}")
 
 async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles incoming audio files (music) and interacts with the Gemini API."""
@@ -314,7 +341,7 @@ async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
             model=MODEL_NAME,
             config=types.GenerateContentConfig(response_modalities=["Text", "Image"], temperature=1.0) # Removed "Audio" from response_modalities
         )
-        chat.send_message(PREFIX_SYS)
+        await retry_gemini_call(chat.send_message, PREFIX_SYS, retries=3, delay=1)
         chat_contexts[chat_id] = chat
 
     try:
@@ -329,7 +356,7 @@ async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
             types.Part(inline_data=types.Blob(mime_type=mime_type, data=audio_stream.getvalue()))
         )
 
-        response = chat_contexts[chat_id].send_message(message=parts)
+        response = await retry_gemini_call(chat_contexts[chat_id].send_message, message=parts, retries=3, delay=1)
         for part in response.candidates[0].content.parts:
             if part.text is not None:
                 await send_safe_message(context, chat_id, part.text)
@@ -343,10 +370,11 @@ async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 logger.warning("Unexpected response part from Gemini.")
                 await context.bot.send_message(chat_id=chat_id, text="Unexpected response from Gemini.")
-
+    except APIError as e:
+        await context.bot.send_message(chat_id=chat_id, text=f"Sorry, Gemini API failed after multiple retries: {e}")
     except Exception as e:
         logger.exception("Error processing audio file")
-        await context.bot.send_message(chat_id=chat_id, text=f"Sorry, an error occurred processing the audio file: {type(e).__name__} - {e}")
+        await context.bot.send_message(chat_id=chat_id, text=f"Sorry, an unexpected error occurred processing the audio file: {type(e).__name__} - {e}")
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles incoming voice messages and interacts with the Gemini API."""
@@ -363,7 +391,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
             model=MODEL_NAME,
             config=types.GenerateContentConfig(response_modalities=["Text", "Image"], temperature=1.0) # Removed "Audio" from response_modalities
         )
-        chat.send_message(PREFIX_SYS)
+        await retry_gemini_call(chat.send_message, PREFIX_SYS, retries=3, delay=1)
         chat_contexts[chat_id] = chat
 
     try:
@@ -378,7 +406,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
             types.Part(inline_data=types.Blob(mime_type=mime_type, data=voice_stream.getvalue()))
         )
 
-        response = chat_contexts[chat_id].send_message(message=parts)
+        response = await retry_gemini_call(chat_contexts[chat_id].send_message, message=parts, retries=3, delay=1)
         for part in response.candidates[0].content.parts:
             if part.text is not None:
                 await send_safe_message(context, chat_id, part.text)
@@ -392,10 +420,11 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 logger.warning("Unexpected response part from Gemini.")
                 await context.bot.send_message(chat_id=chat_id, text="Unexpected response from Gemini.")
-
+    except APIError as e:
+        await context.bot.send_message(chat_id=chat_id, text=f"Sorry, Gemini API failed after multiple retries: {e}")
     except Exception as e:
         logger.exception("Error processing voice message")
-        await context.bot.send_message(chat_id=chat_id, text=f"Sorry, an error occurred processing the voice message: {type(e).__name__} - {e}")
+        await context.bot.send_message(chat_id=chat_id, text=f"Sorry, an unexpected error occurred processing the voice message: {type(e).__name__} - {e}")
 
 
 # --- Main Function ---

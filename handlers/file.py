@@ -1,7 +1,7 @@
 import io
 from telegram import Update
 from telegram.ext import ContextTypes
-from google.genai import types
+from google.genai import types, errors  # Import the errors module
 from utils.config import DEFAULT_TEMPERATURE, PREFIX_SYS
 from utils.shared_context import chat_contexts, chat_temperatures, logger
 from utils.gemini_setup import create_gemini_client, create_new_chat
@@ -35,13 +35,11 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
             mime_type = "application/octet-stream" # generic binary
             logger.warning(f"File {file_name} has no MIME type. Using: {mime_type}")
 
-
         caption = update.message.caption or ""  # Fallback to empty string.
         parts = []
-        if caption: # added so we don't get empty parts with no data in them
+        if caption:  # added so we don't get empty parts with no data in them
             parts.append(types.Part(text=caption))
         parts.append(types.Part(inline_data=types.Blob(mime_type=mime_type, data=file_bytes)))
-
 
         response = chat_contexts[chat_id].send_message(message=parts, config=config_with_temp)
 
@@ -60,9 +58,22 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logger.warning("Unexpected response part from Gemini.")
                 await context.bot.send_message(chat_id=chat_id, text="Unexpected response from Gemini.")
 
+
+    except errors.APIError as e:  # Catch Gemini API errors
+        logger.exception(f"Gemini API error processing file: {file_name}")
+        if "Unsupported MIME type" in str(e):
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"Sorry, the file type '{mime_type}' is not supported."
+            )
+        else:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"Sorry, an error occurred while processing the file: {e}"
+            )
     except Exception as e:
         logger.exception(f"Error processing file: {file_name}")
         await context.bot.send_message(
             chat_id=chat_id,
-            text=f"Sorry, this file type is not supported or an error occurred: {type(e).__name__} - {e}"
+            text=f"Sorry, an unexpected error occurred: {type(e).__name__} - {e}"
         )

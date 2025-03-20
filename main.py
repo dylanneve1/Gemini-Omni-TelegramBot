@@ -11,6 +11,7 @@ from handlers.sticker import handle_sticker
 from handlers.video import handle_video
 from handlers.audio import handle_audio
 from handlers.voice import handle_voice
+from handlers.file import handle_file  # Import the new handler
 
 # Utils
 from utils.config import TELEGRAM_BOT_TOKEN
@@ -33,6 +34,7 @@ def main():
     application.add_handler(MessageHandler(filters.VIDEO, handle_video))
     application.add_handler(MessageHandler(filters.AUDIO, handle_audio))
     application.add_handler(MessageHandler(filters.VOICE, handle_voice))
+    application.add_handler(MessageHandler(filters.Document.ALL, handle_file))  # Add file handler
 
     logger.info("Starting the bot...")
     application.run_polling()

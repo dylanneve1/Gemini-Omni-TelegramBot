@@ -269,6 +269,13 @@ async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_contexts[chat_id] = chat
 
     try:
+        is_animated = sticker.is_animated
+        is_video = sticker.is_video
+
+        if is_animated or is_video:
+            await context.bot.send_message(chat_id=chat_id, text="Videos aren't supported yet.")
+            return
+
         file = await context.bot.get_file(sticker.file_id)
         image_bytes = await file.download_as_bytearray()
         img = Image.open(io.BytesIO(image_bytes))
@@ -298,6 +305,12 @@ async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.exception("Error processing sticker")
         await context.bot.send_message(chat_id=chat_id, text=f"Sorry, an error occurred processing the sticker: {type(e).__name__} - {e}")
+
+async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles incoming video messages and informs users that videos are not supported."""
+    chat_id = update.effective_chat.id
+    logger.info(f"Video received from chat_id: {chat_id}. Videos are not supported.")
+    await context.bot.send_message(chat_id=chat_id, text="Videos aren't supported yet.")
 
 async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles incoming audio files (music) and interacts with the Gemini API."""
@@ -410,6 +423,7 @@ def main():
     application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker)) # Add sticker handler
     application.add_handler(MessageHandler(filters.AUDIO, handle_audio)) # Add audio file handler
     application.add_handler(MessageHandler(filters.VOICE, handle_voice)) # Add voice message handler
+    application.add_handler(MessageHandler(filters.VIDEO, handle_video)) # Add video handler
     logger.info("Starting the bot...")
     application.run_polling()
 

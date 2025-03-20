@@ -55,7 +55,7 @@ export GEMINI_API_KEY="YOUR_GEMINI_API_KEY"
 Once you have set up everything, you can run the bot using:
 
 ```bash
-python bot.py  # Assuming your script is named omni_bot.py
+python main.py
 ```
 
 You should see a message in the console indicating that the bot has started.

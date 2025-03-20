@@ -53,11 +53,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if chat_id not in chat_contexts:
         configure_gemini()
         client = genai.Client(api_key=GEMINI_API_KEY)
-        temperature = chat_temperatures.get(chat_id, DEFAULT_TEMPERATURE) # Get stored temp or default
-        # Create chat with system message prefix
+        # Create chat with system message prefix - temperature will be applied on message send
         chat = client.chats.create(
             model=MODEL_NAME,
-            config=types.GenerateContentConfig(response_modalities=["Text", "Image"], temperature=temperature) # Removed "Audio" from response_modalities
+            config=types.GenerateContentConfig(response_modalities=["Text", "Image"]) # Temperature removed from here
         )
         # Send system message as first message
         chat.send_message(PREFIX_SYS)
@@ -69,10 +68,10 @@ async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if chat_id in chat_contexts:
         configure_gemini()
         client = genai.Client(api_key=GEMINI_API_KEY)
-        # Create new chat with system message prefix
+        # Create new chat with system message prefix - temperature will be applied on message send
         chat = client.chats.create(
             model=MODEL_NAME,
-            config=types.GenerateContentConfig(response_modalities=["Text", "Image"], temperature=DEFAULT_TEMPERATURE) # Reset to default temp
+            config=types.GenerateContentConfig(response_modalities=["Text", "Image"]) # Temperature removed from here
         )
         # Send system message as first message
         chat.send_message(PREFIX_SYS)
@@ -90,17 +89,7 @@ async def set_temperature(update: Update, context: ContextTypes.DEFAULT_TYPE):
         temp_value = float(context.args[0])
         if 0.0 <= temp_value <= 2.0:
             chat_temperatures[chat_id] = temp_value
-            if chat_id in chat_contexts:
-                configure_gemini()
-                client = genai.Client(api_key=GEMINI_API_KEY)
-                # Recreate chat with new temperature
-                chat = client.chats.create(
-                    model=MODEL_NAME,
-                    config=types.GenerateContentConfig(response_modalities=["Text", "Image"], temperature=temp_value)
-                )
-                chat.send_message(PREFIX_SYS) # Resend system message, important for consistent behavior
-                chat_contexts[chat_id] = chat
-            await context.bot.send_message(chat_id=chat_id, text=f"Temperature set to {temp_value} for this chat.")
+            await context.bot.send_message(chat_id=chat_id, text=f"Temperature set to {temp_value} for this chat. It will be applied to the next message you send.")
         else:
             await context.bot.send_message(chat_id=chat_id, text="Temperature value must be between 0.0 and 2.0.")
     except ValueError:
@@ -144,16 +133,19 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if chat_id not in chat_contexts:
             configure_gemini()
             client = genai.Client(api_key=GEMINI_API_KEY)
-            temperature = chat_temperatures.get(chat_id, DEFAULT_TEMPERATURE) # Get stored temp or default
-            # Create chat with system message prefix
+            # Create chat with system message prefix - temperature will be applied on message send
             chat = client.chats.create(
                 model=MODEL_NAME,
-                config=types.GenerateContentConfig(response_modalities=["Text", "Image"], temperature=temperature) # Removed "Audio" from response_modalities
+                config=types.GenerateContentConfig(response_modalities=["Text", "Image"]) # Temperature removed from here
             )
             # Send system message as first message
             chat.send_message(PREFIX_SYS)
             chat_contexts[chat_id] = chat
-        response = chat_contexts[chat_id].send_message(user_message) # This line is likely fine as user_message is text (PartUnion compatible)
+
+        temperature = chat_temperatures.get(chat_id, DEFAULT_TEMPERATURE) # Get stored temp or default
+        config_with_temp = types.GenerateContentConfig(response_modalities=["Text", "Image"], temperature=temperature) # Apply temperature here
+
+        response = chat_contexts[chat_id].send_message(user_message, config=config_with_temp) # Pass config with temperature
         for part in response.candidates[0].content.parts:
             if part.text is not None:
                 await send_safe_message(context, chat_id, part.text) # Use the modified send_safe_message
@@ -183,15 +175,17 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.info(f"Initializing chat context for chat_id: {chat_id} in handle_image") # Added logging
         configure_gemini()
         client = genai.Client(api_key=GEMINI_API_KEY)
-        temperature = chat_temperatures.get(chat_id, DEFAULT_TEMPERATURE) # Get stored temp or default
-        # Create chat with system message prefix
+        # Create chat with system message prefix - temperature will be applied on message send
         chat = client.chats.create(
             model=MODEL_NAME,
-            config=types.GenerateContentConfig(response_modalities=["Text", "Image"], temperature=temperature) # Removed "Audio" from response_modalities
+            config=types.GenerateContentConfig(response_modalities=["Text", "Image"]) # Temperature removed from here
         )
         # Send system message as first message
         chat.send_message(PREFIX_SYS)
         chat_contexts[chat_id] = chat
+
+    temperature = chat_temperatures.get(chat_id, DEFAULT_TEMPERATURE) # Get stored temp or default
+    config_with_temp = types.GenerateContentConfig(response_modalities=["Text", "Image"], temperature=temperature) # Apply temperature here
 
     # If the message is part of a media group, accumulate images.
     if media_group_id:
@@ -230,7 +224,7 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             inline_data=types.Blob(mime_type="image/jpeg", data=buf.getvalue())
                         )
                     )
-                response = chat_contexts[chat_id].send_message(message=parts)
+                response = chat_contexts[chat_id].send_message(message=parts, config=config_with_temp) # Pass config with temperature
                 for part in response.candidates[0].content.parts:
                     if part.text is not None:
                         await send_safe_message(context, chat_id, part.text) # Use the modified send_safe_message
@@ -261,7 +255,7 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parts.append(
             types.Part(inline_data=types.Blob(mime_type="image/jpeg", data=buf.getvalue()))
         )
-        response = chat_contexts[chat_id].send_message(message=parts)
+        response = chat_contexts[chat_id].send_message(message=parts, config=config_with_temp) # Pass config with temperature
         for part in response.candidates[0].content.parts:
             if part.text is not None:
                 await send_safe_message(context, chat_id, part.text) # Use the modified send_safe_message
@@ -294,13 +288,16 @@ async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.info(f"Initializing chat context for chat_id: {chat_id} in handle_sticker")
         configure_gemini()
         client = genai.Client(api_key=GEMINI_API_KEY)
-        temperature = chat_temperatures.get(chat_id, DEFAULT_TEMPERATURE) # Get stored temp or default
+        # Create chat with system message prefix - temperature will be applied on message send
         chat = client.chats.create(
             model=MODEL_NAME,
-            config=types.GenerateContentConfig(response_modalities=["Text", "Image"], temperature=temperature) # Removed "Audio" from response_modalities
+            config=types.GenerateContentConfig(response_modalities=["Text", "Image"]) # Temperature removed from here
         )
         chat.send_message(PREFIX_SYS)
         chat_contexts[chat_id] = chat
+
+    temperature = chat_temperatures.get(chat_id, DEFAULT_TEMPERATURE) # Get stored temp or default
+    config_with_temp = types.GenerateContentConfig(response_modalities=["Text", "Image"], temperature=temperature) # Apply temperature here
 
     try:
         is_animated = sticker.is_animated
@@ -321,7 +318,7 @@ async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parts.append(
             types.Part(inline_data=types.Blob(mime_type="image/png", data=buf.getvalue())) # Setting mime_type to image/png
         )
-        response = chat_contexts[chat_id].send_message(message=parts)
+        response = chat_contexts[chat_id].send_message(message=parts, config=config_with_temp) # Pass config with temperature
         for part in response.candidates[0].content.parts:
             if part.text is not None:
                 await send_safe_message(context, chat_id, part.text)
@@ -357,13 +354,16 @@ async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.info(f"Initializing chat context for chat_id: {chat_id} in handle_audio")
         configure_gemini()
         client = genai.Client(api_key=GEMINI_API_KEY)
-        temperature = chat_temperatures.get(chat_id, DEFAULT_TEMPERATURE) # Get stored temp or default
+        # Create chat with system message prefix - temperature will be applied on message send
         chat = client.chats.create(
             model=MODEL_NAME,
-            config=types.GenerateContentConfig(response_modalities=["Text", "Image"], temperature=temperature) # Removed "Audio" from response_modalities
+            config=types.GenerateContentConfig(response_modalities=["Text", "Image"]) # Temperature removed from here
         )
         chat.send_message(PREFIX_SYS)
         chat_contexts[chat_id] = chat
+
+    temperature = chat_temperatures.get(chat_id, DEFAULT_TEMPERATURE) # Get stored temp or default
+    config_with_temp = types.GenerateContentConfig(response_modalities=["Text", "Image"], temperature=temperature) # Apply temperature here
 
     try:
         file = await context.bot.get_file(audio.file_id)
@@ -377,7 +377,7 @@ async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
             types.Part(inline_data=types.Blob(mime_type=mime_type, data=audio_stream.getvalue()))
         )
 
-        response = chat_contexts[chat_id].send_message(message=parts)
+        response = chat_contexts[chat_id].send_message(message=parts, config=config_with_temp) # Pass config with temperature
         for part in response.candidates[0].content.parts:
             if part.text is not None:
                 await send_safe_message(context, chat_id, part.text)
@@ -407,13 +407,16 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.info(f"Initializing chat context for chat_id: {chat_id} in handle_voice")
         configure_gemini()
         client = genai.Client(api_key=GEMINI_API_KEY)
-        temperature = chat_temperatures.get(chat_id, DEFAULT_TEMPERATURE) # Get stored temp or default
+        # Create chat with system message prefix - temperature will be applied on message send
         chat = client.chats.create(
             model=MODEL_NAME,
-            config=types.GenerateContentConfig(response_modalities=["Text", "Image"], temperature=temperature) # Removed "Audio" from response_modalities
+            config=types.GenerateContentConfig(response_modalities=["Text", "Image"]) # Temperature removed from here
         )
         chat.send_message(PREFIX_SYS)
         chat_contexts[chat_id] = chat
+
+    temperature = chat_temperatures.get(chat_id, DEFAULT_TEMPERATURE) # Get stored temp or default
+    config_with_temp = types.GenerateContentConfig(response_modalities=["Text", "Image"], temperature=temperature) # Apply temperature here
 
     try:
         file = await context.bot.get_file(voice.file_id)
@@ -427,7 +430,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
             types.Part(inline_data=types.Blob(mime_type=mime_type, data=voice_stream.getvalue()))
         )
 
-        response = chat_contexts[chat_id].send_message(message=parts)
+        response = chat_contexts[chat_id].send_message(message=parts, config=config_with_temp) # Pass config with temperature
         for part in response.candidates[0].content.parts:
             if part.text is not None:
                 await send_safe_message(context, chat_id, part.text)

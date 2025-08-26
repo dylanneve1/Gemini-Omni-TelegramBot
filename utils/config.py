@@ -4,7 +4,7 @@ import os
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-MODEL_NAME = "gemini-2.0-flash-exp-image-generation"  # The correct model ID
+MODEL_NAME = "gemini-2.5-flash-image-preview"  # The correct model ID
 DEFAULT_TEMPERATURE = 1.0
 
 # System prefix message

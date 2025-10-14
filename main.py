@@ -5,6 +5,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, fil
 from handlers.start import start
 from handlers.clear import clear
 from handlers.set_temperature import set_temperature
+from handlers.model import model
 from handlers.text import handle_text
 from handlers.image import handle_image
 from handlers.sticker import handle_sticker
@@ -28,6 +29,7 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("clear", clear))
     application.add_handler(CommandHandler("settemp", set_temperature))
+    application.add_handler(CommandHandler("model", model))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     application.add_handler(MessageHandler(filters.PHOTO, handle_image))
     application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))

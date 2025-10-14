@@ -10,3 +10,4 @@ logger = logging.getLogger(__name__)
 # Shared contexts
 chat_contexts = {}  # Dictionary to store chat contexts by chat_id
 chat_temperatures = {}  # Dictionary to store temperature per chat_id
+chat_models = {}  # Dictionary to store current model per chat_id (gemini or kimi)

@@ -4,7 +4,7 @@ from telegram.ext import ContextTypes
 from google.genai import types
 from utils.config import DEFAULT_TEMPERATURE, PREFIX_SYS
 from utils.shared_context import chat_contexts, chat_temperatures, logger
-from utils.gemini_setup import create_gemini_client, create_new_chat
+from utils.model_setup import create_gemini_client, create_new_chat, get_current_model
 from utils.sending import send_safe_message
 
 async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -14,10 +14,19 @@ async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     logger.info(f"Handling audio file from chat_id: {chat_id}")
 
+    # Check if using Kimi (text-only model)
+    current_model = get_current_model(chat_id)
+    if current_model == "kimi":
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="Audio processing is not supported with Kimi model. Please use /model gemini to switch to Gemini for multimodal capabilities."
+        )
+        return
+
     # Ensure chat_context exists
     if chat_id not in chat_contexts:
         client = create_gemini_client()
-        new_chat = create_new_chat(client, PREFIX_SYS)
+        new_chat = create_new_chat(client, PREFIX_SYS, chat_id=chat_id)
         chat_contexts[chat_id] = new_chat
 
     temperature = chat_temperatures.get(chat_id, DEFAULT_TEMPERATURE)

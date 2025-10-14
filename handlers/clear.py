@@ -1,7 +1,7 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 from utils.shared_context import chat_contexts, chat_temperatures
-from utils.gemini_setup import create_gemini_client, create_new_chat
+from utils.model_setup import create_gemini_client, create_new_chat
 from utils.config import PREFIX_SYS
 
 async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -10,7 +10,7 @@ async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if chat_id in chat_contexts:
         client = create_gemini_client()
-        new_chat = create_new_chat(client, PREFIX_SYS)
+        new_chat = create_new_chat(client, PREFIX_SYS, chat_id=chat_id)
         chat_contexts[chat_id] = new_chat
 
         # Remove stored temperature to reset to default

@@ -14,12 +14,12 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     logger.info(f"Handling voice message from chat_id: {chat_id}")
 
-    # Check if using Kimi (text-only model)
+    # Check if using text-only model (Kimi or MiniMax)
     current_model = get_current_model(chat_id)
-    if current_model == "kimi":
+    if current_model in ["kimi", "minimax"]:
         await context.bot.send_message(
             chat_id=chat_id,
-            text="Voice message processing is not supported with Kimi model. Please use /model gemini to switch to Gemini for multimodal capabilities."
+            text=f"Voice message processing is not supported with {current_model.capitalize()} model. Please use /model gemini to switch to Gemini for multimodal capabilities."
         )
         return
 

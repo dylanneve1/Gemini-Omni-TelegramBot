@@ -2,10 +2,10 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from utils.shared_context import chat_contexts, chat_models, logger
 from utils.model_setup import create_gemini_client, create_new_chat, get_current_model
-from utils.config import PREFIX_SYS, GEMINI_MODEL, KIMI_MODEL
+from utils.config import PREFIX_SYS, GEMINI_MODEL, KIMI_MODEL, MINIMAX_MODEL
 
 async def model(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Switches between Gemini and Kimi models, or shows current model."""
+    """Switches between Gemini, Kimi, and MiniMax models, or shows current model."""
     chat_id = update.effective_chat.id
     args = context.args
 
@@ -17,8 +17,9 @@ async def model(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text=(
                 f"Current model: {current}\n"
                 f"Gemini model: {GEMINI_MODEL}\n"
-                f"Kimi model: {KIMI_MODEL}\n\n"
-                "Usage: /model <gemini|kimi>"
+                f"Kimi model: {KIMI_MODEL}\n"
+                f"MiniMax model: {MINIMAX_MODEL}\n\n"
+                "Usage: /model <gemini|kimi|minimax>"
             )
         )
         return
@@ -26,10 +27,10 @@ async def model(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Get the requested model
     requested_model = args[0].lower()
 
-    if requested_model not in ["gemini", "kimi"]:
+    if requested_model not in ["gemini", "kimi", "minimax"]:
         await context.bot.send_message(
             chat_id=chat_id,
-            text="Invalid model. Please choose 'gemini' or 'kimi'.\nUsage: /model <gemini|kimi>"
+            text="Invalid model. Please choose 'gemini', 'kimi', or 'minimax'.\nUsage: /model <gemini|kimi|minimax>"
         )
         return
 
@@ -51,7 +52,14 @@ async def model(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         logger.info(f"Switched chat {chat_id} to {requested_model} model")
 
-        model_name = GEMINI_MODEL if requested_model == "gemini" else KIMI_MODEL
+        # Get the appropriate model name
+        if requested_model == "gemini":
+            model_name = GEMINI_MODEL
+        elif requested_model == "kimi":
+            model_name = KIMI_MODEL
+        else:  # minimax
+            model_name = MINIMAX_MODEL
+
         await context.bot.send_message(
             chat_id=chat_id,
             text=f"Successfully switched to {requested_model} model ({model_name}). Conversation history has been cleared."

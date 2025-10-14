@@ -8,11 +8,16 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 KIMI_API_URL = "https://ai.hackclub.com/chat/completions"
 KIMI_MODEL = "moonshotai/kimi-k2-instruct-0905"
 
+# MiniMax configuration
+MINIMAX_API_KEY = os.environ.get("MINIMAX_API_KEY")
+MINIMAX_API_URL = "https://api.minimax.io/anthropic"
+MINIMAX_MODEL = "MiniMax-M2"
+
 # Gemini configuration
 GEMINI_MODEL = "gemini-2.5-flash-image"
 
 # Default model settings
-DEFAULT_MODEL = "gemini"  # Can be "gemini" or "kimi"
+DEFAULT_MODEL = "gemini"  # Can be "gemini", "kimi", or "minimax"
 MODEL_NAME = GEMINI_MODEL  # For backwards compatibility
 DEFAULT_TEMPERATURE = 1.0
 
@@ -21,22 +26,33 @@ def get_system_prefix(model_type="gemini"):
     """Get system prefix message based on model type.
 
     Args:
-        model_type: Either "gemini" or "kimi"
+        model_type: Either "gemini", "kimi", or "minimax"
 
     Returns:
         Formatted system prefix message
     """
     # Shared base prompt
+    model_display = {
+        "gemini": GEMINI_MODEL,
+        "kimi": KIMI_MODEL,
+        "minimax": MINIMAX_MODEL
+    }.get(model_type, GEMINI_MODEL)
+
     base_prompt = (
         "[SYSTEM] You are Omni, a Telegram bot created by Dylan Neve. "
         f"You are currently powered by the {model_type.capitalize()} model "
-        f"({GEMINI_MODEL if model_type == 'gemini' else KIMI_MODEL}). "
+        f"({model_display}). "
     )
 
     # Model-specific capabilities
     if model_type == "kimi":
         capabilities = (
             "You are capable of understanding text inputs and responding with helpful, engaging text responses. "
+        )
+    elif model_type == "minimax":
+        capabilities = (
+            "You are capable of advanced reasoning and can handle complex queries. "
+            "You support text-based interactions with enhanced analytical capabilities. "
         )
     else:  # gemini
         capabilities = (

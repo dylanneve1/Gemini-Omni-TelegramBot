@@ -1,8 +1,8 @@
-# Omni - Multimodal Gemini Telegram Bot
+# Omni - Multimodal AI Telegram Bot
 
 ## Description
 
-Omni is a Telegram bot powered by the Google Gemini API, designed to be a versatile and engaging conversational partner. It's capable of understanding and responding to various types of content, including:
+Omni is a Telegram bot that supports multiple AI models (Google Gemini, Kimi K2, and MiniMax-M2), designed to be a versatile and engaging conversational partner. It's capable of understanding and responding to various types of content, including:
 
 *   **Text:**  Engage in text-based conversations, ask questions, and get creative text outputs.
 *   **Images:** Send images and stickers, and Omni can analyze and respond to them, even performing image-related tasks.
@@ -21,7 +21,8 @@ Before you can run Omni, you need to set up a few things:
 *   **Python 3.7+**
 *   **pip** (Python package installer)
 *   **Telegram Bot Token:** You need to create a Telegram bot using BotFather and obtain its token.
-*   **Google Gemini API Key:** You need to obtain an API key for the Google Gemini API.
+*   **Google Gemini API Key:** (Required for Gemini model) You need to obtain an API key for the Google Gemini API.
+*   **MiniMax API Key:** (Optional, for MiniMax-M2 model) You need to obtain an API key from MiniMax.
 
 ### Installation
 
@@ -41,13 +42,15 @@ Before you can run Omni, you need to set up a few things:
 You need to set the following environment variables:
 
 *   `TELEGRAM_BOT_TOKEN`:  Your Telegram Bot Token obtained from BotFather.
-*   `GEMINI_API_KEY`: Your Google Gemini API key.
+*   `GEMINI_API_KEY`: Your Google Gemini API key (required for Gemini model).
+*   `MINIMAX_API_KEY`: Your MiniMax API key (optional, only needed for MiniMax-M2 model).
 
 You can set these variables in your shell environment or using a `.env` file if you prefer. For example, in your shell:
 
 ```bash
 export TELEGRAM_BOT_TOKEN="YOUR_TELEGRAM_BOT_TOKEN"
 export GEMINI_API_KEY="YOUR_GEMINI_API_KEY"
+export MINIMAX_API_KEY="YOUR_MINIMAX_API_KEY"  # Optional
 ```
 
 ### Running the Bot
@@ -66,14 +69,23 @@ Interact with Omni in Telegram using the following commands and message types:
 
 *   **/start:** Sends a welcome message and initializes the bot for your chat.
 *   **/clear:** Clears the current conversation history and resets the chat with Omni, starting a fresh conversation.
+*   **/model [gemini|kimi|minimax]:** Switch between AI models. Use without arguments to see current model.
+*   **/set_temperature [0.0-2.0]:** Adjust response creativity/randomness. Higher values = more creative.
+*   **/astra:** Toggle Astra mode (experimental unrestricted mode).
 
 You can send Omni various message types:
 
-*   **Text Messages:**  Simply type and send text messages. Omni will respond based on the conversation context.
-*   **Images:** Send images or photos. You can also add captions to your images for context. Omni can analyze and respond to images. You can send single images or media groups of images.
-*   **Stickers:** Send stickers. Omni can understand and react to stickers as well.
-*   **Audio Messages (Voice Notes):** Send voice messages. Omni will process the audio and respond accordingly.
-*   **Audio Files (Music):** Send audio files like music tracks. Omni can analyze and understand audio files.
+*   **Text Messages:**  Simply type and send text messages. Omni will respond based on the conversation context. All models support text.
+*   **Images:** Send images or photos (Gemini only). You can also add captions to your images for context. Omni can analyze and respond to images. You can send single images or media groups of images.
+*   **Stickers:** Send stickers (Gemini only). Omni can understand and react to stickers as well.
+*   **Audio Messages (Voice Notes):** Send voice messages (Gemini only). Omni will process the audio and respond accordingly.
+*   **Audio Files (Music):** Send audio files like music tracks (Gemini only). Omni can analyze and understand audio files.
+
+### Supported Models
+
+*   **Gemini (gemini-2.5-flash-image):** Multimodal model supporting text, images, audio, and file uploads. Can generate both text and images in responses.
+*   **Kimi (kimi-k2-instruct-0905):** Text-only model through HackClub API. No API key required for Kimi.
+*   **MiniMax-M2:** Advanced reasoning model with text-only support. Displays "Thinking..." indicator during response generation to show reasoning progress.
 
 **Adding Omni to Groups:**
 
@@ -85,10 +97,13 @@ Omni includes basic error handling and logging. Errors during API calls or messa
 
 ## Dependencies
 
-*   `python-telegram-bot`
-*   `google-generativeai`
-*   `pillow` (PIL - Python Imaging Library)
-*   `telegramify-markdown`
+*   `python-telegram-bot` - Telegram Bot API wrapper
+*   `google.genai` - Google Gemini API client
+*   `anthropic` - Anthropic/Claude API client (used for MiniMax compatibility)
+*   `requests` - HTTP library (used for Kimi API)
+*   `pillow` - Python Imaging Library
+*   `telegramify-markdown` - Markdown formatting for Telegram
+*   `aiohttp` - Async HTTP client
 
 These dependencies are listed in the `requirements.txt` file.
 
